@@ -35,7 +35,30 @@ class NetworkTopo(Topo):
 
         Topo.__init__(self)
 
-        # Build the specified network topology here
+        # adding hosts with their IP addresses and default gateways
+        self.addHost('h1', ip='10.0.1.2/24', defaultRoute='via 10.0.1.1')
+        self.addHost('h2', ip='10.0.1.3/24', defaultRoute='via 10.0.1.1')
+        self.addHost('ser', ip='10.0.2.2/24', defaultRoute='via 10.0.2.1')
+        self.addHost('ext', ip='192.168.1.123/24', defaultRoute='via 192.168.1.1')
+
+        # adding switches (s1, s2, s3)
+        self.addSwitch('s1')
+        self.addSwitch('s2')
+        self.addSwitch('s3')
+
+        # adding links - hosts to s1
+        self.addLink('h1', 's1')
+        self.addLink('h2', 's1')
+
+        # adding link internal server to s2
+        self.addLink('ser', 's2')
+
+        # adding router links on s3
+        self.addLink('s1', 's3')
+        self.addLink('s2', 's3')
+        self.addLink('ext', 's3')
+
+        
 
 def run():
     topo = NetworkTopo()
