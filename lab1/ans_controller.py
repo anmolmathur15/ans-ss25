@@ -198,25 +198,31 @@ class LearningSwitch(app_manager.RyuApp):
                 icmp_pkt = pkt.get_protocol(icmp.icmp)
                 
 
-                # BLOCK traffic from ext to internal hosts
-                if src_ip == "192.168.1.123" and dst_ip.startswith("10."):
-                    self.logger.info(
-                        "Dropping packet from ext to internal host")
-                               
-                   
-                    match = ofp_parser.OFPMatch(
+                # BLOCK traffic from ext to internal hosts or internal hosts to ext
+                if (src_ip == "192.168.1.123" and dst_ip.startswith("10.")) or (src_ip.startswith("10.") and dst_ip == "192.168.1.123"):
+                    self.logger.info("Dropping packet from ext to internal host / internal host to ext")
+    
+                    # Match ext -> internal
+                    match1 = ofp_parser.OFPMatch(
                         eth_type=ether_types.ETH_TYPE_IP,
                         ipv4_src="192.168.1.123",
-                        ipv4_dst=("10.0.0.0", "255.0.0.0")  
-                    )
-                    
-                    actions = []  # An empty action list means drop
+                        ipv4_dst=("10.0.0.0", "255.0.0.0")
+                        )
 
-                    # Add this flow with a higher priority
-                    self.add_flow(datapath, 20, match, actions)
-                    
-                    # The current packet that triggered this logic will also be dropped as we return here.
-                    return
+                    # Match internal -> ext
+                    match2 = ofp_parser.OFPMatch(
+                        eth_type=ether_types.ETH_TYPE_IP,
+                        ipv4_src=("10.0.0.0", "255.0.0.0"),
+                        ipv4_dst="192.168.1.123"
+                        )
+
+                    actions = []  # drop = no actions
+
+                    self.add_flow(datapath, 20, match1, actions)
+                    self.add_flow(datapath, 20, match2, actions)
+
+                    return  # drop the triggering packet
+
 
                 # ICMP Echo Reply to own gateway — and block cross-subnet
                 if dst_ip in self.port_to_own_ip.values() and icmp_pkt and icmp_pkt.type == icmp.ICMP_ECHO_REQUEST:
@@ -309,9 +315,3 @@ class LearningSwitch(app_manager.RyuApp):
                                               actions=actions,
                                               data=msg.data)
                 datapath.send_msg(out)
-
-                
-                   
-
-               
-                
