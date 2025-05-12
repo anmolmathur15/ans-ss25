@@ -103,12 +103,14 @@ class LearningSwitch(app_manager.RyuApp):
         if dst in self.switch_forwarding_table[dpid]:
             out_port = self.switch_forwarding_table[dpid][dst]
         else:
+            self.logger.info(f'No entry found in the forwarding table of switch {dpid} flooding all ports')
             out_port = ofproto.OFPP_FLOOD
 
         actions = [parser.OFPActionOutput(out_port)]
 
         # Installing flow rule
         if out_port != ofproto.OFPP_FLOOD:
+            self.logger.info(f'Installing flow rule for switch {dpid}')
             match = parser.OFPMatch(in_port=in_port, eth_dst=dst, eth_src=src)
             if msg.buffer_id != ofproto.OFP_NO_BUFFER:
                 self.add_flow(datapath, 1, match, actions, msg.buffer_id)
@@ -124,7 +126,6 @@ class LearningSwitch(app_manager.RyuApp):
         datapath.send_msg(out)
     
     def handle_arp_req(self, datapath, eth, arp_pkt, in_port):
-            
         # Learn the ip to mac address mapping
         self.arp_cache[arp_pkt.src_ip] = arp_pkt.src_mac
         
@@ -140,6 +141,7 @@ class LearningSwitch(app_manager.RyuApp):
                 
         if matching_ip:
             interface_ip = interface_info['gateway']
+            self.logger.info(f'ARP request received for router interface {interface_ip}')
             arp_resp = packet.Packet()
             arp_resp.add_protocol(ethernet.ethernet(ethertype=eth.ethertype,
                                     dst=eth.src, src=interface_info['mac']))
@@ -174,6 +176,7 @@ class LearningSwitch(app_manager.RyuApp):
         ofproto = datapath.ofproto
         out = parser.OFPPacketOut(datapath=datapath, buffer_id=ofproto.OFP_NO_BUFFER,
                                 in_port=ofproto.OFPP_CONTROLLER, actions=actions, data=arp_req)
+        self.logger.info(f'Initiating ARP request for IP {dest_ip}')
         datapath.send_msg(out)
             
     def handle_ip_req(self, datapath, eth, ip_pkt, icmp_pkt, in_port, parser):
@@ -232,7 +235,7 @@ class LearningSwitch(app_manager.RyuApp):
             new_pkt.add_protocol(icmp_pkt)
             
         new_pkt.serialize()
-        self.logger.info("Forwarded packet to next hop")
+        self.logger.info(f'Forwarded packet to next hop with IP {dest_ip}')
 
         out = parser.OFPPacketOut(datapath=datapath, buffer_id=datapath.ofproto.OFP_NO_BUFFER,
                                   in_port=in_port, actions=actions, data=new_pkt.data)
@@ -258,9 +261,11 @@ class LearningSwitch(app_manager.RyuApp):
         in_port = msg.match['in_port']
         if dpid == 3 and arp_pkt:
             if arp_pkt.opcode == arp.ARP_REQUEST:
+                self.logger.info(f'ARP request received at device {dpid}')
                 self.handle_arp_req(datapath, eth, arp_pkt, in_port)
             
             elif arp_pkt.opcode == arp.ARP_REPLY:
+                self.logger.info(f'ARP reply message received at device {dpid}')
                 self.arp_cache[arp_pkt.src_ip] = arp_pkt.src_mac
                 if self.replay_buffer:
                     for curr_req in self.replay_buffer:
@@ -275,6 +280,7 @@ class LearningSwitch(app_manager.RyuApp):
         elif dpid == 3 and ip_pkt:
             protocol = ip_pkt.proto
             # Restricting visibility of internal hosts to external host
+            self.logger.info(f'IP request received at device {dpid}')
             src_ip = ipaddress.ip_address(ip_pkt.src)
             dest_ip = ipaddress.ip_address(ip_pkt.dst)
             if protocol == in_proto.IPPROTO_ICMP:
@@ -303,5 +309,6 @@ class LearningSwitch(app_manager.RyuApp):
                     
             self.handle_ip_req(datapath, eth, ip_pkt, icmp_pkt, in_port, parser)
         else:
+            self.logger.info(f'Packet received at device {dpid}')
             self.send_packet_lev2(datapath, dpid, eth, msg, ofproto, parser)
         
