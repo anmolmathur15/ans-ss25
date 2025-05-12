@@ -45,6 +45,7 @@ class LearningSwitch(app_manager.RyuApp):
         self.replay_buffer = []
         self.ext_subnet = ipaddress.ip_network("192.168.1.0/24")
         self.ser_subnet = ipaddress.ip_network("10.0.2.0/24")
+        self.router_gateways = ["10.0.1.1", "10.0.2.1", "192.168.1.1"]
         
         # Routing table
         self.routing_table = {
@@ -179,9 +180,48 @@ class LearningSwitch(app_manager.RyuApp):
         self.logger.info(f'Initiating ARP request for IP {dest_ip}')
         datapath.send_msg(out)
             
+    def reply_to_icmp_echo(self, datapath, in_port, parser, eth, ip_pkt, icmp_pkt):
+        self.logger.info("ICMP_ECHO_REQUEST received for router interface, sending reply")
+        echo_reply = icmp.icmp(
+            type_=icmp.ICMP_ECHO_REPLY,
+            code=0,
+            csum=0,
+            data=icmp_pkt.data
+        )
+
+        reply_eth = ethernet.ethernet(
+            ethertype=eth.ethertype,
+            dst=eth.src,
+            src=eth.dst
+        )
+        reply_ip = ipv4.ipv4(
+            dst=ip_pkt.src,
+            src=ip_pkt.dst,
+            proto=ip_pkt.proto
+        )
+
+        reply_pkt = packet.Packet()
+        reply_pkt.add_protocol(reply_eth)
+        reply_pkt.add_protocol(reply_ip)
+        reply_pkt.add_protocol(echo_reply)
+        reply_pkt.serialize()
+
+        actions = [parser.OFPActionOutput(in_port)]
+        out = parser.OFPPacketOut(
+            datapath=datapath,
+            buffer_id=datapath.ofproto.OFP_NO_BUFFER,
+            in_port=datapath.ofproto.OFPP_CONTROLLER,
+            actions=actions,
+            data=reply_pkt.data
+        )
+        datapath.send_msg(out)
+        return
+    
+
     def handle_ip_req(self, datapath, eth, ip_pkt, icmp_pkt, in_port, parser):
         src_ip = ip_pkt.src
         dest_ip = ip_pkt.dst
+        
         # Find the best matching route
         matching_routes = []
         for subnet, route_info in self.routing_table.items():
@@ -197,7 +237,23 @@ class LearningSwitch(app_manager.RyuApp):
         out_port = best_route[1]['port']
         
         try:
-            dest_mac = self.arp_cache[dest_ip]
+            subnet = ipaddress.ip_network(best_route[0])
+            if (
+                ipaddress.ip_address(src_ip) in subnet and
+                ipaddress.ip_address(dest_ip) == ipaddress.ip_address(best_route[1]['gateway']) and
+                icmp_pkt
+            ):
+
+                self.logger.info('Host pinging own gateway, allowing packet')
+                dest_mac = best_route[1]['mac']
+                self.reply_to_icmp_echo(datapath, in_port, parser, eth, ip_pkt, icmp_pkt)
+                return
+                
+            elif dest_ip in self.router_gateways:
+                self.logger.info('Host pinging external gateway, dropping packet')
+                return
+            else:
+                dest_mac = self.arp_cache[dest_ip]
         except (KeyError, IndexError):
             self.logger.info(f'Unable to find MAC address of {dest_ip} in ARP cache, generating ARP request')
             src = {
@@ -224,13 +280,11 @@ class LearningSwitch(app_manager.RyuApp):
             parser.OFPActionOutput(out_port)
         ]
         
-        match = parser.OFPMatch(eth_type=0x0800, ipv4_src=src_ip, ipv4_dst=dest_ip)
-
-        self.add_flow(datapath, 10, match, actions)
 
         new_pkt = packet.Packet()
         new_pkt.add_protocol(updated_eth)
         new_pkt.add_protocol(ip_pkt)
+        
         if icmp_pkt:
             new_pkt.add_protocol(icmp_pkt)
             
