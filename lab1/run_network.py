@@ -37,26 +37,28 @@ class NetworkTopo(Topo):
 
         # Build the specified network topology here
         
-        # Adding hosts
-        h1 = self.addHost('h1', ip = "10.0.1.2/24", defaultRoute = "via 10.0.1.1")
-        h2 = self.addHost('h2', ip = "10.0.1.3/24", defaultRoute = "via 10.0.1.1")
-        ser = self.addHost('ser', ip = "10.0.2.2/24", defaultRoute = "via 10.0.2.1")
-        ext = self.addHost('ext', ip = "192.168.1.123/24", defaultRoute = "via 192.168.1.1")
+        # Add hosts
+        h1 = self.addHost( 'h1', ip='10.0.1.2/24', defaultRoute='via 10.0.1.1')
+        h2 = self.addHost( 'h2', ip='10.0.1.3/24', defaultRoute='via 10.0.1.1')
+        ext = self.addHost( 'ext', ip='192.168.1.123/24', defaultRoute='via 192.168.1.1')
+        ser = self.addHost( 'ser', ip='10.0.2.2/24', defaultRoute='via 10.0.2.1')
         
-        # Adding switches and router
-        s1 = self.addSwitch('s1')
-        s2 = self.addSwitch('s2')
-        router = self.addSwitch('s3')
+        # Add switches
+        s1 = self.addSwitch( 's1' )
+        s2 = self.addSwitch( 's2' )
         
-        # Adding links
-        self.addLink(h1, s1, bw = 15, delay = "10ms")
-        self.addLink(h2, s1, bw = 15, delay = "10ms")
-        self.addLink(ser, s2, bw = 15, delay = "10ms")
-        
-        self.addLink(ext, router, bw = 15, delay = "10ms")
-        self.addLink(s1, router, bw = 15, delay = "10ms")
-        self.addLink(s2, router, bw = 15, delay = "10ms")
+        # Add router
+        s3 = self.addSwitch( 's3' )
 
+        # Add links
+        self.addLink( h1, s1, bw=15, delay='10ms' )
+        self.addLink( h2, s1, bw=15, delay='10ms'  )
+        self.addLink( s2, ser, bw=15, delay='10ms'  )
+        
+        self.addLink( s1, s3, bw=15, delay='10ms'  )
+        self.addLink( s3, s2, bw=15, delay='10ms'  )
+        self.addLink( ext, s3, bw=15, delay='10ms'  )
+      
 def run():
     topo = NetworkTopo()
     net = Mininet(topo=topo,
