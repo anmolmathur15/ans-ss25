@@ -291,7 +291,7 @@ class LearningSwitch(app_manager.RyuApp):
             parser.OFPActionOutput(out_port)
         ]
         
-        match = parser.OFPMatch(eth_type=0x0800, ipv4_src=src_ip, ipv4_dst=dest_ip)
+        match = parser.OFPMatch(eth_type=0x0800, ipv4_src=src_ip, ipv4_dst=dest_ip, ip_proto=ip_pkt.proto)
         self.add_flow(datapath, 50, match, actions)
 
         new_pkt = packet.Packet()
