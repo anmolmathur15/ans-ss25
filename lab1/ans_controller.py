@@ -131,16 +131,23 @@ class LearningSwitch(app_manager.RyuApp):
         self.arp_cache[arp_pkt.src_ip] = arp_pkt.src_mac
         
         dest_ip = arp_pkt.dst_ip
+        src_ip = arp_pkt.src_ip
         
         matching_ip = False
+        own_gateway = False
         interface_info = {}
         for subnet, route_info in self.routing_table.items():
             if ipaddress.ip_address(dest_ip) == ipaddress.ip_address(route_info['gateway']):
                 matching_ip = True
+                if ipaddress.ip_address(src_ip) in ipaddress.ip_network(subnet):
+                    self.logger.info("Host pinging own gateway, sharing MAC address of interface")
+                    own_gateway = True
+                else:
+                    self.logger.info("Host pinging external gateway, not sharing MAC address of interface")
                 interface_info = route_info
                 break
                 
-        if matching_ip:
+        if matching_ip and own_gateway:
             interface_ip = interface_info['gateway']
             self.logger.info(f'ARP request received for router interface {interface_ip}')
             arp_resp = packet.Packet()
@@ -180,8 +187,8 @@ class LearningSwitch(app_manager.RyuApp):
         self.logger.info(f'Initiating ARP request for IP {dest_ip}')
         datapath.send_msg(out)
             
-    def reply_to_icmp_echo(self, datapath, in_port, parser, eth, ip_pkt, icmp_pkt):
-        self.logger.info("ICMP_ECHO_REQUEST received for router interface, sending reply")
+    def reply_to_icmp_echo(self, datapath, in_port, parser, eth, ip_pkt, icmp_pkt, own_gateway):
+        self.logger.info("ICMP echo request received for router interface, sending reply")
         echo_reply = icmp.icmp(
             type_=icmp.ICMP_ECHO_REPLY,
             code=0,
@@ -206,7 +213,14 @@ class LearningSwitch(app_manager.RyuApp):
         reply_pkt.add_protocol(echo_reply)
         reply_pkt.serialize()
 
-        actions = [parser.OFPActionOutput(in_port)]
+        # If host pings own gateway allow else drop
+        if own_gateway:
+            self.logger.info('Host pinging own gateway, allowing packet')
+            actions = [parser.OFPActionOutput(in_port)]
+        else:
+            self.logger.info('Host pinging external gateway, dropping packet')
+            actions = []
+        
         out = parser.OFPPacketOut(
             datapath=datapath,
             buffer_id=datapath.ofproto.OFP_NO_BUFFER,
@@ -243,14 +257,11 @@ class LearningSwitch(app_manager.RyuApp):
                 ipaddress.ip_address(dest_ip) == ipaddress.ip_address(best_route[1]['gateway']) and
                 icmp_pkt
             ):
-
-                self.logger.info('Host pinging own gateway, allowing packet')
                 dest_mac = best_route[1]['mac']
-                self.reply_to_icmp_echo(datapath, in_port, parser, eth, ip_pkt, icmp_pkt)
+                self.reply_to_icmp_echo(datapath, in_port, parser, eth, ip_pkt, icmp_pkt, True)
                 return
-                
             elif dest_ip in self.router_gateways:
-                self.logger.info('Host pinging external gateway, dropping packet')
+                self.reply_to_icmp_echo(datapath, in_port, parser, eth, ip_pkt, icmp_pkt, False)
                 return
             else:
                 dest_mac = self.arp_cache[dest_ip]
@@ -280,6 +291,8 @@ class LearningSwitch(app_manager.RyuApp):
             parser.OFPActionOutput(out_port)
         ]
         
+        match = parser.OFPMatch(eth_type=0x0800, ipv4_src=src_ip, ipv4_dst=dest_ip)
+        self.add_flow(datapath, 50, match, actions)
 
         new_pkt = packet.Packet()
         new_pkt.add_protocol(updated_eth)
@@ -334,7 +347,6 @@ class LearningSwitch(app_manager.RyuApp):
         elif dpid == 3 and ip_pkt:
             protocol = ip_pkt.proto
             # Restricting visibility of internal hosts to external host
-            self.logger.info(f'IP request received at device {dpid}')
             src_ip = ipaddress.ip_address(ip_pkt.src)
             dest_ip = ipaddress.ip_address(ip_pkt.dst)
             if protocol == in_proto.IPPROTO_ICMP:
@@ -363,6 +375,6 @@ class LearningSwitch(app_manager.RyuApp):
                     
             self.handle_ip_req(datapath, eth, ip_pkt, icmp_pkt, in_port, parser)
         else:
-            self.logger.info(f'Packet received at device {dpid}')
+            # self.logger.info(f'Packet received at device {dpid}')
             self.send_packet_lev2(datapath, dpid, eth, msg, ofproto, parser)
         
