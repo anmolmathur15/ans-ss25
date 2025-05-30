@@ -35,7 +35,7 @@ from mininet.node import Node, OVSKernelSwitch, RemoteController
 from mininet.topo import Topo
 from mininet.util import waitListening, custom
 
-from topo import Fattree
+import topo
 
 
 class FattreeNet(Topo):
