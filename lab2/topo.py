@@ -77,7 +77,7 @@ class Fattree:
         # keep track of every edge in the graph
         self.edges = []
     
-        # --- Core layer ---
+        # Core layer
         # build a (num_agg x num_agg) grid of core switches
         core = []
         for grp in range(num_agg):
@@ -88,7 +88,7 @@ class Fattree:
                 row.append(sw)
             core.append(row)
 
-        # --- Pod layer ---
+        # Pod layer
         for pod in range(pods):
             agg_switches = []
             edge_switches = []
