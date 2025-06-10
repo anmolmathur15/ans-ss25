@@ -225,7 +225,7 @@ class FTRouter(app_manager.RyuApp):
             # out_port = (host_id - 2 + switch_id) % (self.k // 2) + self.k // 2
             upstream_ports = []
             for port, dpid in switch_ports:
-                if self.type_of_switch(dpid) == "core": # Not Uplink port
+                if self.type_of_switch(dpid) == "core":
                     upstream_ports.append(port)
             out_port = upstream_ports[host_id % len(upstream_ports)]
             actions.append(parser.OFPActionOutput(out_port))
