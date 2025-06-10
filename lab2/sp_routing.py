@@ -48,7 +48,7 @@ class SPRouter(app_manager.RyuApp):
         
         # Initialize the topology with #ports=4
         self.topo_net = topo.Fattree(4)
-        self.prefixes = self.topo_net.prefixes
+        self.switch_ips = self.topo_net.switch_ips
         self.switch_forwarding_table = {}
         self.arp_cache = {}
         self.global_port_mapping = {}
@@ -219,10 +219,10 @@ class SPRouter(app_manager.RyuApp):
         
     def get_edge_switch(self, dst_ip):
         edge_switch = None
-        for switch in self.prefixes.keys():
-            prefix = self.prefixes[switch]
+        for switch in self.switch_ips.keys():
+            switch_ip = self.switch_ips[switch]
             search_term = ".".join(dst_ip.split(".")[:3]) + ".1"
-            if search_term == prefix:
+            if search_term == switch_ip:
                 edge_switch = switch
                 break
         
@@ -250,8 +250,10 @@ class SPRouter(app_manager.RyuApp):
             return
         
         # Learn MAC address
-        if src not in self.switch_forwarding_table:
-            self.switch_forwarding_table[src] = (dpid, in_port)
+        if dpid not in self.switch_forwarding_table:
+            self.switch_forwarding_table[dpid] = {}
+        if src not in self.switch_forwarding_table[dpid]:
+            self.switch_forwarding_table[dpid][src] = in_port
             
         if ip_pkt:
             src_ip = ip_pkt.src
@@ -266,7 +268,10 @@ class SPRouter(app_manager.RyuApp):
         if (ip_pkt or arp_pkt) and (src_dpid != dst_dpid):
             self.handle_lev3_req(datapath, eth, src_ip, dest_ip, in_port, parser, msg)
         else:
-            out_port = ofproto.OFPP_FLOOD
+            out_port = self.switch_forwarding_table[dpid].get(dst, None)
+            if not out_port:
+                out_port = ofproto.OFPP_FLOOD
+                
             actions = [parser.OFPActionOutput(out_port)]
             
             # If the buffer_id is not set, we need to send the data

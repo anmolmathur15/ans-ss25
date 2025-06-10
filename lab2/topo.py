@@ -65,7 +65,7 @@ class Fattree:
     def __init__(self, num_ports):
         self.servers = []
         self.switches = []
-        self.prefixes = {}
+        self.switch_ips = {}
         self.generate(num_ports)
 
     def generate(self, num_ports):
@@ -94,8 +94,8 @@ class Fattree:
             for j in range(num_agg):
                 dpid = core_switch_count + 1
                 core_switch_count += 1
-                prefix = f"10.{k}.{grp+1}.{j+1}"
-                self.prefixes[dpid]  = prefix
+                switch_ip = f"10.{k}.{grp+1}.{j+1}"
+                self.switch_ips[dpid]  = switch_ip
                 sw = Node(f"s{dpid}", type="switch", dpid=format(dpid, '016x'))
                 self.switches.append(sw)
                 row.append(sw)
@@ -110,8 +110,8 @@ class Fattree:
             for i in range(num_agg):
                 dpid = agg_switch_count + tot_core_switches + 1
                 agg_switch_count += 1
-                prefix = f"10.{pod}.{i+num_agg}.1"
-                self.prefixes[dpid]  = prefix
+                switch_ip = f"10.{pod}.{i+num_agg}.1"
+                self.switch_ips[dpid]  = switch_ip
                 sw = Node(f"s{dpid}", type="switch", dpid=format(dpid, '016x'))
                 self.switches.append(sw)
                 agg_switches.append(sw)
@@ -120,8 +120,8 @@ class Fattree:
             for i in range(num_edge):
                 dpid = edge_switch_count + tot_core_switches + tot_agg_switches + 1
                 edge_switch_count += 1
-                prefix = f"10.{pod}.{i}.1"
-                self.prefixes[dpid]  = prefix
+                switch_ip = f"10.{pod}.{i}.1"
+                self.switch_ips[dpid]  = switch_ip
                 sw = Node(f"s{dpid}", type="switch", dpid=format(dpid, '016x'))
                 self.switches.append(sw)
                 edge_switches.append(sw)
