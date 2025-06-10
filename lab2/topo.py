@@ -19,6 +19,9 @@
  CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  """
 
+import networkx as nx
+import matplotlib.pyplot as plt
+
 # Class for an edge in the graph
 class Edge:
     def __init__(self):
@@ -148,3 +151,82 @@ class Fattree:
                     core_sw = core[grp][ai]
                     e = agg_sw.add_edge(core_sw)
                     self.edges.append(e)
+
+    def sanity_check(self):
+        import networkx as nx
+        k = len(set(sw.id for sw in self.switches)) ** (1/2)
+        k = int(k)  # infer k from switch count if needed
+        expected = {
+            'core': (k//2)**2,
+            'agre': k*(k//2),
+            'edge': k*(k//2),
+            'host': (k**3)//4
+        }
+        G = nx.Graph()
+
+        for sw in self.switches:
+            dpid_int = int(sw.dpid, 16)
+            if dpid_int <= (k*k)//4:
+                t = 'core'
+            elif dpid_int <= (k*k)//4 + k*(k//2):
+                t = 'agre'
+            else:
+                t = 'edge'
+            G.add_node(sw.id, type=t)
+
+        for sw in self.switches:
+            for e in sw.edges:
+                if e.lnode.id in G and e.rnode.id in G:
+                    G.add_edge(e.lnode.id, e.rnode.id)
+
+        for h in self.servers:
+            G.add_node(h.id, type='host')
+        for h in self.servers:
+            for e in h.edges:
+                if e.lnode.id in G and e.rnode.id in G:
+                    G.add_edge(e.lnode.id, e.rnode.id)
+
+        actual = {t: sum(1 for _,d in G.nodes(data=True) if d['type']==t) for t in expected}
+        deg = dict(G.degree())
+        deg_by_type = {
+            t: sorted({deg[n] for n,d in G.nodes(data=True) if d['type']==t})
+            for t in expected
+        }
+
+        print("Sanity check for k =", k)
+        print(f"{'Type':<8}{'Expected':>10}{'Actual':>10}{'Degrees':>25}")
+        for t in expected:
+            print(f"{t:<8}{expected[t]:>10}{actual[t]:>10}{str(deg_by_type[t]):>25}")
+
+    def plot(self, k_threshold=6):
+        import networkx as nx
+        import matplotlib.pyplot as plt
+        k = int(len(self.switches) ** 0.5)
+        if k > k_threshold:
+            print(f"Skipping plot (k={k} > {k_threshold})")
+            return
+
+        G = nx.Graph()
+        for sw in self.switches:
+            dpid_int = int(sw.dpid, 16)
+            if dpid_int <= (k*k)//4:
+                t = 'core'
+            elif dpid_int <= (k*k)//4 + k*(k//2):
+                t = 'agre'
+            else:
+                t = 'edge'
+            G.add_node(sw.id, type=t)
+        for h in self.servers:
+            G.add_node(h.id, type='host')
+        for e in self.edges:
+            G.add_edge(e.lnode.id, e.rnode.id)
+
+        pos = nx.spring_layout(G, seed=42)
+        color_map = {'core':'red','agre':'blue','edge':'green','host':'orange'}
+        node_colors = [color_map[d['type']] for _,d in G.nodes(data=True)]
+        nx.draw(G, pos, node_color=node_colors, with_labels=False, node_size=50)
+        for t,c in color_map.items():
+            plt.scatter([], [], c=c, label=t)
+        plt.legend(scatterpoints=1)
+        plt.title(f"Fat-Tree (k={k})")
+        plt.show()

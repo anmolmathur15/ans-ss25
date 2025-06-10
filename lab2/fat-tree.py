@@ -91,4 +91,9 @@ def run(graph_topo):
 
 if __name__ == '__main__':
     ft_topo = topo.Fattree(4)
+    
+    # sanity and visual checks before Mininet
+    ft_topo.sanity_check()
+    ft_topo.plot(k_threshold=6)
+    
     run(ft_topo)
